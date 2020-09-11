@@ -29,7 +29,7 @@ Open the project using your favorite text editor. If you are using IntelliJ, you
 
 ### Running
 
-There are 2 options for running Anteus. You either need libsqlite3 or docker. Docker is easier but requires some docker knowledge. We do recommend docker though.
+There are 2 options for running Antaeus. You either need libsqlite3 or docker. Docker is easier but requires some docker knowledge. We do recommend docker though.
 
 *Running Natively*
 
