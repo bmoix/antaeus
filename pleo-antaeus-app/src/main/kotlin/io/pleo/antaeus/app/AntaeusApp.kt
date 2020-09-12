@@ -63,7 +63,7 @@ fun main() {
     // This is _your_ billing service to be included where you see fit
     val billingService = BillingService(
             paymentProvider = paymentProvider,
-            dal = dal
+            invoiceService = invoiceService
     )
 
     // Create REST web service

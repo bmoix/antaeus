@@ -26,11 +26,11 @@ class BillingServiceTest {
     private val paymentProvider = mockk<PaymentProvider> {
         every { charge(any()) } returns true
     }
-    private val dal = mockk<AntaeusDal> {
-        every { updateInvoiceStatus(invoice.id, InvoiceStatus.PAID)} returns 1
+    private val invoiceService = mockk<InvoiceService> {
+        every { updateInvoice(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.PAID) } returns 1
     }
 
-    private val billingService = BillingService(paymentProvider, dal)
+    private val billingService = BillingService(paymentProvider, invoiceService)
 
     @Test
     fun `payInvoice succeeds`() {
@@ -52,24 +52,11 @@ class BillingServiceTest {
     }
 
     @Test
-    fun `payInvoice fails with provider not enough funds`() {
-        val provider = mockk<PaymentProvider> {
-            every { charge(any()) } returns false
-        }
-        val service = BillingService(provider, dal)
-
-        val exception = assertThrows<Exception> {
-            service.payInvoice(invoice)
-        }
-        assertEquals("failed charge", exception.message)
-    }
-
-    @Test
     fun `payInvoice fails updating DB after charge`() {
-        val dalFailingUpdate = mockk<AntaeusDal> {
-            every { updateInvoiceStatus(invoice.id, InvoiceStatus.PAID)} returns 0
+        val invoiceService = mockk<InvoiceService> {
+            every { updateInvoice(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.PAID) } returns 0
         }
-        val service = BillingService(paymentProvider, dalFailingUpdate)
+        val service = BillingService(paymentProvider, invoiceService)
 
         val exception = assertThrows<Exception> {
             service.payInvoice(invoice)
