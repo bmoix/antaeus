@@ -11,9 +11,11 @@ import getPaymentProvider
 import io.pleo.antaeus.core.services.BillingService
 import io.pleo.antaeus.core.services.CustomerService
 import io.pleo.antaeus.core.services.InvoiceService
+import io.pleo.antaeus.core.services.SchedulingService
 import io.pleo.antaeus.data.AntaeusDal
 import io.pleo.antaeus.data.CustomerTable
 import io.pleo.antaeus.data.InvoiceTable
+import io.pleo.antaeus.models.Periodicity
 import io.pleo.antaeus.rest.AntaeusRest
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
@@ -26,6 +28,8 @@ import java.io.File
 import java.sql.Connection
 
 fun main() {
+    System.setProperty(org.slf4j.impl.SimpleLogger.DEFAULT_LOG_LEVEL_KEY, "DEBUG");
+
     // The tables to create in the database.
     val tables = arrayOf(InvoiceTable, CustomerTable)
 
@@ -65,6 +69,13 @@ fun main() {
             paymentProvider = paymentProvider,
             invoiceService = invoiceService
     )
+    val schedulingService = SchedulingService(
+            invoiceService,
+            billingService
+    )
+
+    // Start the scheduling service with a periodicity
+    schedulingService.start(Periodicity.MONTHLY)
 
     // Create REST web service
     AntaeusRest(
