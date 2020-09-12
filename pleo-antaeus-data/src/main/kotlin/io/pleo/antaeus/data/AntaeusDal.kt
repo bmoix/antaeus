@@ -61,6 +61,23 @@ class AntaeusDal(private val db: Database) {
         }
     }
 
+    /*
+        Updates an Invoice to a PROCESSING status.
+        Invoices in PAID or PROCESSING status can't be processed.
+     */
+    fun updateInvoiceToProcessing(id: Int): Int {
+        return transaction(db) {
+            InvoiceTable
+                    .update({
+                        InvoiceTable.id.eq(id) and
+                                InvoiceTable.status.neq(InvoiceStatus.PAID.toString()) and
+                                InvoiceTable.status.neq(InvoiceStatus.PROCESSING.toString())
+                    }) {
+                        it[this.status] = InvoiceStatus.PROCESSING.toString()
+                    }
+        }
+    }
+
     fun fetchCustomer(id: Int): Customer? {
         return transaction(db) {
             CustomerTable

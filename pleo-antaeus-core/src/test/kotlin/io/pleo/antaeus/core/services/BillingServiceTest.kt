@@ -2,9 +2,8 @@ package io.pleo.antaeus.core.services
 
 import io.mockk.every
 import io.mockk.mockk
-import io.pleo.antaeus.core.exceptions.InvoiceAlreadyPaidException
+import io.mockk.verify
 import io.pleo.antaeus.core.external.PaymentProvider
-import io.pleo.antaeus.data.AntaeusDal
 import io.pleo.antaeus.models.Currency
 import io.pleo.antaeus.models.Invoice
 import io.pleo.antaeus.models.InvoiceStatus
@@ -27,7 +26,8 @@ class BillingServiceTest {
         every { charge(any()) } returns true
     }
     private val invoiceService = mockk<InvoiceService> {
-        every { updateInvoice(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.PAID) } returns 1
+        every { updateToProcessing(invoice.id) } returns 1
+        every { update(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.PAID) } returns 1
     }
 
     private val billingService = BillingService(paymentProvider, invoiceService)
@@ -35,26 +35,32 @@ class BillingServiceTest {
     @Test
     fun `payInvoice succeeds`() {
         billingService.payInvoice(invoice)
+
+        verify(exactly = 1) {
+            paymentProvider.charge(invoice)
+            invoiceService.updateToProcessing(invoice.id)
+            invoiceService.update(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.PAID)
+        }
     }
 
     @Test
-    fun `payInvoice fails with invoice already paid`() {
-        val invoicePaid = Invoice(
-                2,
-                42,
-                Money(BigDecimal.valueOf(100.0), Currency.EUR),
-                InvoiceStatus.PAID
-        )
+    fun `payInvoice skips invoice already paid`() {
+        val invoiceServicePaid = mockk<InvoiceService> {
+            every { updateToProcessing(invoice.id) } returns 0
+        }
+        val service = BillingService(paymentProvider, invoiceServicePaid)
+        service.payInvoice(invoice)
 
-        assertThrows<InvoiceAlreadyPaidException> {
-            billingService.payInvoice(invoicePaid)
+        verify(exactly = 0) {
+            paymentProvider.charge(invoice)
         }
     }
 
     @Test
     fun `payInvoice fails updating DB after charge`() {
         val invoiceService = mockk<InvoiceService> {
-            every { updateInvoice(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.PAID) } returns 0
+            every { updateToProcessing(invoice.id) } returns 1
+            every { update(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.PAID) } returns 0
         }
         val service = BillingService(paymentProvider, invoiceService)
 
