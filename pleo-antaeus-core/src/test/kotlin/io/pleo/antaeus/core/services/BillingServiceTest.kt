@@ -3,6 +3,7 @@ package io.pleo.antaeus.core.services
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.pleo.antaeus.core.exceptions.CustomerNotFoundException
 import io.pleo.antaeus.core.external.PaymentProvider
 import io.pleo.antaeus.models.Currency
 import io.pleo.antaeus.models.Invoice
@@ -27,7 +28,7 @@ class BillingServiceTest {
     }
     private val invoiceService = mockk<InvoiceService> {
         every { updateToProcessing(invoice.id) } returns 1
-        every { update(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.PAID) } returns 1
+        every { update(invoice.id, invoice.customerId, invoice.amount, any()) } returns 1
     }
 
     private val billingService = BillingService(paymentProvider, invoiceService)
@@ -53,6 +54,22 @@ class BillingServiceTest {
 
         verify(exactly = 0) {
             paymentProvider.charge(invoice)
+        }
+    }
+
+    @Test
+    fun `payInvoice fails with customer not found`() {
+        val paymentProviderFail = mockk<PaymentProvider> {
+            every { charge(any()) } throws CustomerNotFoundException(invoice.customerId)
+        }
+        val service = BillingService(paymentProviderFail, invoiceService)
+
+        service.payInvoice(invoice)
+
+        verify(exactly = 1) {
+            invoiceService.updateToProcessing(invoice.id)
+            paymentProviderFail.charge(invoice)
+            invoiceService.update(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.ERROR)
         }
     }
 

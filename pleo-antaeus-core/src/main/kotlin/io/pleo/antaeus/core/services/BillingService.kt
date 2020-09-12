@@ -31,7 +31,8 @@ class BillingService(
             }
         }
         catch (e: CustomerNotFoundException) {
-            // TODO: mark as failed
+            logger.error { "Failed to pay invoice '${invoice.id} from customer '${invoice.customerId}. ${e.message}" }
+            updateInvoice(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.ERROR)
         }
         catch (e: CurrencyMismatchException) {
             // TODO: change currency
