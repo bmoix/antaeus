@@ -29,10 +29,12 @@ class SchedulingService(
         logger.info { "Starting the Scheduling Service with a ${periodicity.toString()} periodicity" }
 
         GlobalScope.launch {
+            init()
+        }
+        GlobalScope.launch {
             scheduleBills(periodicity)
         }
         GlobalScope.launch {
-            delay(30000L)
             scheduleRetries()
         }
     }
@@ -63,6 +65,15 @@ class SchedulingService(
                 delay(timeToSleep)
                 processingChannel.send(retry)
             }
+        }
+    }
+
+    private suspend fun init() {
+        val invoicesToRetry = invoiceService.fetchByMultipleStatus(
+                listOf(InvoiceStatus.INSUFFICIENT_FUNDS, InvoiceStatus.NETWORK_ERROR))
+        logger.info { "Scheduling ${invoicesToRetry.size} failed invoices" }
+        for (invoice in invoicesToRetry) {
+            processingChannel.send(BillingAttempt(invoice.id, 0))
         }
     }
 }

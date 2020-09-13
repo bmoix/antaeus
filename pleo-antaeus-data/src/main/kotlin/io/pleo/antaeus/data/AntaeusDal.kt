@@ -43,6 +43,15 @@ class AntaeusDal(private val db: Database) {
         }
     }
 
+    fun fetchInvoicesByMultipleStatus(statuses: List<InvoiceStatus>): List<Invoice> {
+        val statusesString = statuses.map { it.toString() }
+        return transaction(db) {
+            InvoiceTable
+                    .select{ InvoiceTable.status.inList(statusesString) }
+                    .map { it.toInvoice() }
+        }
+    }
+
     fun createInvoice(amount: Money, customer: Customer, status: InvoiceStatus = InvoiceStatus.PENDING): Invoice? {
         val id = transaction(db) {
             // Insert the invoice and returns its new id.
