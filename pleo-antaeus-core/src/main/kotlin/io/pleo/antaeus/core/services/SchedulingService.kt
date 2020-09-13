@@ -4,6 +4,8 @@ import io.pleo.antaeus.models.InvoiceStatus
 import io.pleo.antaeus.models.Periodicity
 import kotlinx.coroutines.*
 import mu.KotlinLogging
+import java.time.*
+import java.time.format.DateTimeFormatter.ISO_ZONED_DATE_TIME
 
 /*
     SchedulingService main responsibility is to decide when an invoice has to be paid.
@@ -26,9 +28,11 @@ class SchedulingService(
     private suspend fun scheduleBills(periodicity: Periodicity) {
         // TODO: add more control of the loop
         while (true) {
-            val t = timeUntilNextPeriod(periodicity)
-            logger.debug { "Going to sleep for $t ms..." }
-            delay(t)
+            val currTime = ZonedDateTime.now(ZoneId.of("UTC"))
+            val timeToSleep = timeUntilNextPeriod(currTime, periodicity)
+            val timeToWakeUp = currTime.plusNanos(timeToSleep * 1000000L)
+            logger.debug { "Going to sleep for $timeToSleep ms until ${timeToWakeUp.format(ISO_ZONED_DATE_TIME)}..." }
+            delay(timeToSleep)
             logger.debug { "Waking up" }
 
             val invoices = invoiceService.fetchByStatus(InvoiceStatus.PENDING)
@@ -37,16 +41,6 @@ class SchedulingService(
                 // TODO: put in a queue
                 billingService.payInvoice(invoice)
             }
-        }
-    }
-
-    fun timeUntilNextPeriod(periodicity: Periodicity): Long {
-        // TODO: implement
-        return when (periodicity) {
-            Periodicity.HOURLY -> 1000L
-            Periodicity.DAILY -> 2000L
-            Periodicity.WEEKLY -> 3000L
-            Periodicity.MONTHLY -> 4000L
         }
     }
 }
