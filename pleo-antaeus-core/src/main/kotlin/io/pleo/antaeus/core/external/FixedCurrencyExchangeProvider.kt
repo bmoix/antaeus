@@ -36,7 +36,6 @@ class FixedCurrencyExchangeProvider: CurrencyExchangeProvider {
             Pair(Currency.GBP, Currency.GBP) to BigDecimal("1.00"),
     )
 
-
     override fun getRate(source: Currency, destination: Currency): BigDecimal {
         return rates[Pair(source, destination)] ?: throw ExchangeRateNotFoundException(source, destination)
     }

@@ -16,7 +16,7 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter.ISO_ZONED_DATE_TIME
 
 /*
-    SchedulingService main responsibility is to decide when an invoice has to be paid.
+    SchedulingService schedules when the invoices should be paid.
  */
 class SchedulingService(
         private val invoiceService: InvoiceService,
@@ -26,7 +26,12 @@ class SchedulingService(
 ) {
     private val logger = KotlinLogging.logger {}
 
-    // Starts the service by launching a worker to schedule the bills to be paid with a specified periodicity.
+    /*
+        Starts the service by launching 3 different workers:
+            1. Initial scheduling of failed invoices by external factors.
+            2. Main worker that schedules payments with a periodicity.
+            3. Worker that schedules retries with exponential backoff.
+     */
     fun start() {
         logger.info { "Starting the Scheduling Service..." }
 
@@ -41,9 +46,12 @@ class SchedulingService(
         }
     }
 
+    /*
+        Schedules new bills to be paid with a periodicity.
+        Waits until the next period to schedule new bills.
+     */
     private suspend fun scheduleBills(periodicity: Periodicity) {
         logger.info { "Staring scheduler worker with a ${periodicity.toString()} periodicity..." }
-        // TODO: add more control of the loop
         while (true) {
             val currTime = ZonedDateTime.now(ZoneId.of("UTC"))
             val timeToSleep = timeUntilNextPeriod(currTime, periodicity)
@@ -60,6 +68,9 @@ class SchedulingService(
         }
     }
 
+    /*
+        Schedules failed invoices with an exponential backoff.
+     */
     private suspend fun scheduleRetries() = coroutineScope {
         logger.info { "Starting retrier worker..."}
         for (retry in retryChannel) {
@@ -72,6 +83,9 @@ class SchedulingService(
         }
     }
 
+    /*
+        Schedules bills for invoices failed due to external factors.
+     */
     private suspend fun init() {
         logger.info { "Starting initializer worker..."}
         val invoicesToRetry = invoiceService.fetchByMultipleStatus(

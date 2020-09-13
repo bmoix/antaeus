@@ -13,6 +13,12 @@ import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.launch
 import mu.KotlinLogging
 
+/*
+    BillingService processes payments of invoices.
+
+    It launches a worker that listens to the processingChannel for new invoices to be paid.
+    Failed invoices are sent to the retryChannel.
+ */
 class BillingService(
         private val paymentProvider: PaymentProvider,
         private val invoiceService: InvoiceService,
@@ -22,7 +28,10 @@ class BillingService(
 ) {
     private val logger = KotlinLogging.logger {}
 
-    // Starts the service by launching a worker to process all the incoming bills through the processingChannel.
+    /*
+        Starts the service by launching a worker to process all the incoming bills
+        through the processingChannel.
+     */
     fun start() {
         logger.info { "Starting the Billing Service" }
 
@@ -31,14 +40,20 @@ class BillingService(
         }
     }
 
-    // Processes all the invoices coming from the processingChannel
-    private suspend fun processInvoices(): Unit {
+    /*
+        Processes all the invoices coming from the processingChannel
+     */
+    private suspend fun processInvoices() {
         for (billingAttempt in processingChannel) {
             payInvoice(billingAttempt)
         }
     }
 
-    fun payInvoice(billingAttempt: BillingAttempt): Unit {
+    /*
+        Pays the invoice with the specified ID.
+        If something goes wrong, updates the invoice status and sends it to retry if needed.
+     */
+    fun payInvoice(billingAttempt: BillingAttempt) {
         logger.info { "Processing invoice '${billingAttempt.invoiceId}'" }
 
         // invoices should be paid only ONCE
@@ -57,43 +72,51 @@ class BillingService(
                 false -> {
                     logger.warn { "Invoice '${invoice.id}' from customer '${invoice.customerId}' FAILED. Retrying..."}
                     updateInvoice(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.INSUFFICIENT_FUNDS)
-                    retry(BillingAttempt(billingAttempt.invoiceId, billingAttempt.numAttempts + 1))
+                    retry(billingAttempt)
                 }
             }
         }
         catch (e: CustomerNotFoundException) {
-            logger.error(e) { "Failed to pay invoice '${invoice.id} from customer '${invoice.customerId}" }
+            logger.error { "Failed to pay invoice '${invoice.id} from customer '${invoice.customerId}'. ${e.message}" }
             updateInvoice(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.ERROR)
         }
         catch (e: CurrencyMismatchException) {
-            logger.error(e) { "Failed to pay invoice '${invoice.id} from customer '${invoice.customerId}" }
+            logger.warn { "Failed to pay invoice '${invoice.id} from customer '${invoice.customerId}'. ${e.message}" }
             updateInvoice(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.CURRENCY_MISMATCH)
             exchangeService.fixInvoiceCurrency(invoice.id)
-            retry(BillingAttempt(billingAttempt.invoiceId, billingAttempt.numAttempts + 1))
+            retry(billingAttempt)
         }
         catch (e: NetworkException) {
-            logger.error(e) { "Failed to pay invoice '${invoice.id} from customer '${invoice.customerId}" }
+            logger.warn { "Failed to pay invoice '${invoice.id} from customer '${invoice.customerId}'. ${e.message}" }
             updateInvoice(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.NETWORK_ERROR)
-            retry(BillingAttempt(billingAttempt.invoiceId, billingAttempt.numAttempts + 1))
+            retry(billingAttempt)
         }
     }
 
+    /*
+        Checks that the invoice is not being processed by someone else or is already paid
+        and marks it as PROCESSING so no one will process it again.
+     */
     private fun markInvoiceAsProcessing(id: Int): Int {
         return invoiceService.updateToProcessing(id)
     }
 
-    private fun updateInvoice(id: Int, customerId: Int, amount: Money, status: InvoiceStatus): Unit {
-        // TODO: handle DB failure
+    /*
+        Updates the invoice's values.
+     */
+    private fun updateInvoice(id: Int, customerId: Int, amount: Money, status: InvoiceStatus) {
         val updated = invoiceService.update(id, customerId, amount, status)
         if (updated != 1) {
-            // TODO: failed to update DB, retry
             throw Exception("failed DB update")
         }
     }
 
-    private fun retry(billingAttempt: BillingAttempt): Unit {
+    /*
+        Sends the billing attempt to the scheduler to be retried.
+     */
+    private fun retry(billingAttempt: BillingAttempt) {
         GlobalScope.launch {
-            retryChannel.send(billingAttempt)
+            retryChannel.send(BillingAttempt(billingAttempt.invoiceId, billingAttempt.numAttempts + 1))
         }
     }
 }

@@ -7,6 +7,9 @@ import mu.KotlinLogging
 import java.lang.Exception
 import java.math.BigDecimal
 
+/*
+    ExchangeService computes exchanges between currencies.
+ */
 class ExchangeService(
         private val customerService: CustomerService,
         private val invoiceService: InvoiceService,
@@ -14,6 +17,9 @@ class ExchangeService(
 ) {
     private val logger = KotlinLogging.logger {}
 
+    /*
+        Computes the exchange between the source and destination currency.
+     */
     fun exchange(value: BigDecimal, source: Currency, destination: Currency): BigDecimal {
         try {
             val rate = currencyExchangeProvider.getRate(source, destination)
@@ -25,6 +31,9 @@ class ExchangeService(
         }
     }
 
+    /*
+        Fixes the invoice's currency to match the customer's currency and exchanges its value.
+     */
     fun fixInvoiceCurrency(invoiceId: Int) {
         logger.info { "Fixing currency of invoice '$invoiceId'" }
         val invoice = invoiceService.fetch(invoiceId)
@@ -36,5 +45,6 @@ class ExchangeService(
 
         val newAmount = exchange(invoice.amount.value, invoice.amount.currency, customer.currency)
         invoiceService.update(invoice.id, invoice.customerId, Money(newAmount, customer.currency), invoice.status)
+        logger.info { "Exchange: ${invoice.amount.value} ${invoice.amount.currency} -> $newAmount ${customer.currency}" }
     }
 }

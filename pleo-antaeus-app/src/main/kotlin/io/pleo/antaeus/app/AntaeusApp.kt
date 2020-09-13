@@ -64,15 +64,16 @@ fun main() {
     val paymentProvider = UnstablePaymentProvider(customerService)
     val currencyExchangeProvider = FixedCurrencyExchangeProvider()
 
-    // This is _your_ billing service to be included where you see fit
     val exchangeService = ExchangeService(
             customerService = customerService,
             invoiceService = invoiceService,
             currencyExchangeProvider = currencyExchangeProvider,
     )
 
+    // Communication channels between the billing and scheduling service
     val processingChannel = Channel<BillingAttempt>()
     val retryChannel = Channel<BillingAttempt>()
+
     val billingService = BillingService(
             paymentProvider = paymentProvider,
             invoiceService = invoiceService,
@@ -90,8 +91,6 @@ fun main() {
                     backoffMaxRetries = 12,
             )
     )
-
-
 
     // Start the billing and scheduling services in the background
     billingService.start()
