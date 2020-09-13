@@ -15,6 +15,7 @@ import io.pleo.antaeus.data.CustomerTable
 import io.pleo.antaeus.data.InvoiceTable
 import io.pleo.antaeus.models.BillingAttempt
 import io.pleo.antaeus.models.Periodicity
+import io.pleo.antaeus.models.SchedulingConfig
 import io.pleo.antaeus.rest.AntaeusRest
 import kotlinx.coroutines.channels.Channel
 import org.jetbrains.exposed.sql.Database
@@ -83,13 +84,18 @@ fun main() {
             invoiceService = invoiceService,
             processingChannel =processingChannel,
             retryChannel = retryChannel,
+            config = SchedulingConfig(
+                    periodicity = Periodicity.MONTHLY,
+                    backoffInitialWait = 1000L,
+                    backoffMaxRetries = 12,
+            )
     )
 
 
 
     // Start the billing and scheduling services in the background
     billingService.start()
-    schedulingService.start(Periodicity.HOURLY)
+    schedulingService.start()
 
     // Create REST web service
     AntaeusRest(

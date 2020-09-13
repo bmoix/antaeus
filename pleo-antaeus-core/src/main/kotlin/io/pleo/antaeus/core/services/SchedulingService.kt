@@ -3,6 +3,7 @@ package io.pleo.antaeus.core.services
 import io.pleo.antaeus.models.BillingAttempt
 import io.pleo.antaeus.models.InvoiceStatus
 import io.pleo.antaeus.models.Periodicity
+import io.pleo.antaeus.models.SchedulingConfig
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.SendChannel
@@ -20,19 +21,20 @@ import java.time.format.DateTimeFormatter.ISO_ZONED_DATE_TIME
 class SchedulingService(
         private val invoiceService: InvoiceService,
         private val processingChannel: SendChannel<BillingAttempt>,
-        private val retryChannel: Channel<BillingAttempt>
+        private val retryChannel: Channel<BillingAttempt>,
+        private val config: SchedulingConfig,
 ) {
     private val logger = KotlinLogging.logger {}
 
     // Starts the service by launching a worker to schedule the bills to be paid with a specified periodicity.
-    fun start(periodicity: Periodicity) {
-        logger.info { "Starting the Scheduling Service with a ${periodicity.toString()} periodicity" }
+    fun start() {
+        logger.info { "Starting the Scheduling Service..." }
 
         GlobalScope.launch {
             init()
         }
         GlobalScope.launch {
-            scheduleBills(periodicity)
+            scheduleBills(config.periodicity)
         }
         GlobalScope.launch {
             scheduleRetries()
@@ -40,6 +42,7 @@ class SchedulingService(
     }
 
     private suspend fun scheduleBills(periodicity: Periodicity) {
+        logger.info { "Staring scheduler worker with a ${periodicity.toString()} periodicity..." }
         // TODO: add more control of the loop
         while (true) {
             val currTime = ZonedDateTime.now(ZoneId.of("UTC"))
@@ -58,9 +61,10 @@ class SchedulingService(
     }
 
     private suspend fun scheduleRetries() = coroutineScope {
+        logger.info { "Starting retrier worker..."}
         for (retry in retryChannel) {
             launch {
-                val timeToSleep = exponentialBackoff(100, 10, retry.numAttempts)
+                val timeToSleep = exponentialBackoff(config.backoffInitialWait, config.backoffMaxRetries, retry.numAttempts)
                 logger.info { "Scheduling retry for invoice '${retry.invoiceId}' in $timeToSleep ms" }
                 delay(timeToSleep)
                 processingChannel.send(retry)
@@ -69,6 +73,7 @@ class SchedulingService(
     }
 
     private suspend fun init() {
+        logger.info { "Starting initializer worker..."}
         val invoicesToRetry = invoiceService.fetchByMultipleStatus(
                 listOf(InvoiceStatus.INSUFFICIENT_FUNDS, InvoiceStatus.NETWORK_ERROR))
         logger.info { "Scheduling ${invoicesToRetry.size} failed invoices" }
