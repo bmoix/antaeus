@@ -25,15 +25,21 @@ class BillingServiceTest {
     private val paymentProvider = mockk<PaymentProvider> {
         every { charge(any()) } returns true
     }
+
     private val invoiceService = mockk<InvoiceService> {
         every { updateToProcessing(invoice.id) } returns 1
         every { fetch(invoice.id) } returns invoice
         every { update(invoice.id, invoice.customerId, invoice.amount, any()) } returns 1
     }
+    private val exchangeService = mockk<ExchangeService> {
+        every { fixInvoiceCurrency(any()) } returns Unit
+    }
+
     private val processingChannel = mockk<Channel<BillingAttempt>> {}
     private val retryChannel = mockk<Channel<BillingAttempt>> {}
 
-    private val billingService = BillingService(paymentProvider, invoiceService, processingChannel, retryChannel)
+    private val billingService = BillingService(
+            paymentProvider, invoiceService, exchangeService, processingChannel, retryChannel)
 
     @Test
     fun `payInvoice succeeds`() {
@@ -52,7 +58,7 @@ class BillingServiceTest {
         val invoiceServicePaid = mockk<InvoiceService> {
             every { updateToProcessing(invoice.id) } returns 0
         }
-        val service = BillingService(paymentProvider, invoiceServicePaid, processingChannel, retryChannel)
+        val service = BillingService(paymentProvider, invoiceServicePaid, exchangeService, processingChannel, retryChannel)
         service.payInvoice(billingAttempt)
 
         verify(exactly = 0) {
@@ -66,7 +72,7 @@ class BillingServiceTest {
         val paymentProviderFail = mockk<PaymentProvider> {
             every { charge(any()) } throws CustomerNotFoundException(invoice.customerId)
         }
-        val service = BillingService(paymentProviderFail, invoiceService, processingChannel, retryChannel)
+        val service = BillingService(paymentProviderFail, invoiceService, exchangeService, processingChannel, retryChannel)
 
         service.payInvoice(billingAttempt)
 
@@ -85,7 +91,7 @@ class BillingServiceTest {
             every { fetch(invoice.id) } returns invoice
             every { update(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.PAID) } returns 0
         }
-        val service = BillingService(paymentProvider, invoiceServiceFail, processingChannel, retryChannel)
+        val service = BillingService(paymentProvider, invoiceServiceFail, exchangeService, processingChannel, retryChannel)
 
         val exception = assertThrows<Exception> {
             service.payInvoice(billingAttempt)

@@ -1,4 +1,5 @@
 
+import io.pleo.antaeus.core.external.CurrencyExchangeProvider
 import io.pleo.antaeus.core.external.PaymentProvider
 import io.pleo.antaeus.data.AntaeusDal
 import io.pleo.antaeus.models.Currency
@@ -35,6 +36,15 @@ internal fun getPaymentProvider(): PaymentProvider {
     return object : PaymentProvider {
         override fun charge(invoice: Invoice): Boolean {
                 return Random.nextBoolean()
+        }
+    }
+}
+
+// This is the mocked instance of the currency exchange provider
+internal fun getCurrencyExchangeProvider(): CurrencyExchangeProvider {
+    return object : CurrencyExchangeProvider {
+        override fun getRate(source: Currency, destination: Currency): BigDecimal {
+            return BigDecimal("2.00")
         }
     }
 }

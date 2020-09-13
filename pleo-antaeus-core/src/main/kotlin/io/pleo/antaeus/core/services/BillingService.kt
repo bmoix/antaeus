@@ -16,6 +16,7 @@ import mu.KotlinLogging
 class BillingService(
         private val paymentProvider: PaymentProvider,
         private val invoiceService: InvoiceService,
+        private val exchangeService: ExchangeService,
         private val processingChannel: ReceiveChannel<BillingAttempt>,
         private val retryChannel: SendChannel<BillingAttempt>
 ) {
@@ -67,7 +68,8 @@ class BillingService(
         catch (e: CurrencyMismatchException) {
             logger.error(e) { "Failed to pay invoice '${invoice.id} from customer '${invoice.customerId}" }
             updateInvoice(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.CURRENCY_MISMATCH)
-            // TODO: change currency
+            exchangeService.fixInvoiceCurrency(invoice.id)
+            retry(BillingAttempt(billingAttempt.invoiceId, billingAttempt.numAttempts + 1))
         }
         catch (e: NetworkException) {
             logger.error(e) { "Failed to pay invoice '${invoice.id} from customer '${invoice.customerId}" }

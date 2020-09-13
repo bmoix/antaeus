@@ -7,11 +7,9 @@
 
 package io.pleo.antaeus.app
 
+import getCurrencyExchangeProvider
 import getPaymentProvider
-import io.pleo.antaeus.core.services.BillingService
-import io.pleo.antaeus.core.services.CustomerService
-import io.pleo.antaeus.core.services.InvoiceService
-import io.pleo.antaeus.core.services.SchedulingService
+import io.pleo.antaeus.core.services.*
 import io.pleo.antaeus.data.AntaeusDal
 import io.pleo.antaeus.data.CustomerTable
 import io.pleo.antaeus.data.InvoiceTable
@@ -59,17 +57,25 @@ fun main() {
 
     // Get third parties
     val paymentProvider = getPaymentProvider()
+    val currencyExchangeProvider = getCurrencyExchangeProvider()
 
     // Create core services
     val invoiceService = InvoiceService(dal = dal)
     val customerService = CustomerService(dal = dal)
 
     // This is _your_ billing service to be included where you see fit
+    val exchangeService = ExchangeService(
+            customerService = customerService,
+            invoiceService = invoiceService,
+            currencyExchangeProvider = currencyExchangeProvider,
+    )
+
     val processingChannel = Channel<BillingAttempt>()
     val retryChannel = Channel<BillingAttempt>()
     val billingService = BillingService(
             paymentProvider = paymentProvider,
             invoiceService = invoiceService,
+            exchangeService = exchangeService,
             processingChannel = processingChannel,
             retryChannel = retryChannel,
     )
@@ -78,6 +84,8 @@ fun main() {
             processingChannel =processingChannel,
             retryChannel = retryChannel,
     )
+
+
 
     // Start the billing and scheduling services in the background
     billingService.start()
