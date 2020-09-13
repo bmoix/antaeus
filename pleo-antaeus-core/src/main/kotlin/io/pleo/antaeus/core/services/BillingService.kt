@@ -7,16 +7,39 @@ import io.pleo.antaeus.core.external.PaymentProvider
 import io.pleo.antaeus.models.Invoice
 import io.pleo.antaeus.models.InvoiceStatus
 import io.pleo.antaeus.models.Money
+import io.pleo.antaeus.models.Periodicity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import mu.KotlinLogging
 
 class BillingService(
-    private val paymentProvider: PaymentProvider,
-    private val invoiceService: InvoiceService
+        private val paymentProvider: PaymentProvider,
+        private val invoiceService: InvoiceService,
+        private val processingChannel: ReceiveChannel<Invoice>,
 ) {
     private val logger = KotlinLogging.logger {}
 
+    // Starts the service by launching a worker to process all the incoming bills through the processingChannel.
+    fun start() {
+        logger.info { "Starting the Billing Service" }
+
+        GlobalScope.launch {
+            processInvoices()
+        }
+    }
+
+    // Processes all the invoices coming from the processingChannel
+    private suspend fun processInvoices(): Unit {
+        for (invoice in processingChannel) {
+            payInvoice(invoice)
+        }
+    }
+
     fun payInvoice(invoice: Invoice): Unit {
-        logger.debug { "Processing invoice '${invoice.id}' from customer '${invoice.customerId}'" }
+        logger.info { "Processing invoice '${invoice.id}' from customer '${invoice.customerId}'" }
 
         // invoices should be paid only ONCE
         if (markInvoiceAsProcessing(invoice.id) == 0) {
@@ -26,12 +49,18 @@ class BillingService(
 
         try {
             when (paymentProvider.charge(invoice)) {
-                true -> updateInvoice(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.PAID)
-                false -> retry()
+                true -> {
+                    logger.info { "Invoice '${invoice.id}' from customer '${invoice.customerId}' was paid SUCCESSFULLY"}
+                    updateInvoice(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.PAID)
+                }
+                false -> {
+                    logger.info { "Invoice '${invoice.id}' from customer '${invoice.customerId}' FAILED. Retrying..."}
+                    retry()
+                }
             }
         }
         catch (e: CustomerNotFoundException) {
-            logger.error { "Failed to pay invoice '${invoice.id} from customer '${invoice.customerId}. ${e.message}" }
+            logger.error(e) { "Failed to pay invoice '${invoice.id} from customer '${invoice.customerId}" }
             updateInvoice(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.ERROR)
         }
         catch (e: CurrencyMismatchException) {

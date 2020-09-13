@@ -15,8 +15,10 @@ import io.pleo.antaeus.core.services.SchedulingService
 import io.pleo.antaeus.data.AntaeusDal
 import io.pleo.antaeus.data.CustomerTable
 import io.pleo.antaeus.data.InvoiceTable
+import io.pleo.antaeus.models.Invoice
 import io.pleo.antaeus.models.Periodicity
 import io.pleo.antaeus.rest.AntaeusRest
+import kotlinx.coroutines.channels.Channel
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.StdOutSqlLogger
@@ -28,8 +30,6 @@ import java.io.File
 import java.sql.Connection
 
 fun main() {
-    System.setProperty(org.slf4j.impl.SimpleLogger.DEFAULT_LOG_LEVEL_KEY, "DEBUG");
-
     // The tables to create in the database.
     val tables = arrayOf(InvoiceTable, CustomerTable)
 
@@ -65,21 +65,24 @@ fun main() {
     val customerService = CustomerService(dal = dal)
 
     // This is _your_ billing service to be included where you see fit
+    val invoicesToPay = Channel<Invoice>()
     val billingService = BillingService(
             paymentProvider = paymentProvider,
-            invoiceService = invoiceService
+            invoiceService = invoiceService,
+            processingChannel = invoicesToPay
     )
     val schedulingService = SchedulingService(
-            invoiceService,
-            billingService
+            invoiceService = invoiceService,
+            scheduledChannel = invoicesToPay,
     )
 
-    // Start the scheduling service with a periodicity
-    schedulingService.start(Periodicity.MONTHLY)
+    // Start the billing and scheduling services in the background
+    billingService.start()
+    schedulingService.start(Periodicity.HOURLY)
 
     // Create REST web service
     AntaeusRest(
-        invoiceService = invoiceService,
-        customerService = customerService
+            invoiceService = invoiceService,
+            customerService = customerService
     ).run()
 }

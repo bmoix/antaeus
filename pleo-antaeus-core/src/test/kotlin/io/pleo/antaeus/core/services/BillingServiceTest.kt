@@ -9,6 +9,7 @@ import io.pleo.antaeus.models.Currency
 import io.pleo.antaeus.models.Invoice
 import io.pleo.antaeus.models.InvoiceStatus
 import io.pleo.antaeus.models.Money
+import kotlinx.coroutines.channels.Channel
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -30,8 +31,9 @@ class BillingServiceTest {
         every { updateToProcessing(invoice.id) } returns 1
         every { update(invoice.id, invoice.customerId, invoice.amount, any()) } returns 1
     }
+    private val processingChannel = mockk<Channel<Invoice>> {}
 
-    private val billingService = BillingService(paymentProvider, invoiceService)
+    private val billingService = BillingService(paymentProvider, invoiceService, processingChannel)
 
     @Test
     fun `payInvoice succeeds`() {
@@ -49,7 +51,7 @@ class BillingServiceTest {
         val invoiceServicePaid = mockk<InvoiceService> {
             every { updateToProcessing(invoice.id) } returns 0
         }
-        val service = BillingService(paymentProvider, invoiceServicePaid)
+        val service = BillingService(paymentProvider, invoiceServicePaid, processingChannel)
         service.payInvoice(invoice)
 
         verify(exactly = 0) {
@@ -62,7 +64,7 @@ class BillingServiceTest {
         val paymentProviderFail = mockk<PaymentProvider> {
             every { charge(any()) } throws CustomerNotFoundException(invoice.customerId)
         }
-        val service = BillingService(paymentProviderFail, invoiceService)
+        val service = BillingService(paymentProviderFail, invoiceService, processingChannel)
 
         service.payInvoice(invoice)
 
@@ -79,7 +81,7 @@ class BillingServiceTest {
             every { updateToProcessing(invoice.id) } returns 1
             every { update(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.PAID) } returns 0
         }
-        val service = BillingService(paymentProvider, invoiceService)
+        val service = BillingService(paymentProvider, invoiceService, processingChannel)
 
         val exception = assertThrows<Exception> {
             service.payInvoice(invoice)

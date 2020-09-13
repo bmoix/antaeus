@@ -1,8 +1,10 @@
 package io.pleo.antaeus.core.services
 
+import io.pleo.antaeus.models.Invoice
 import io.pleo.antaeus.models.InvoiceStatus
 import io.pleo.antaeus.models.Periodicity
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.SendChannel
 import mu.KotlinLogging
 import java.time.*
 import java.time.format.DateTimeFormatter.ISO_ZONED_DATE_TIME
@@ -12,15 +14,15 @@ import java.time.format.DateTimeFormatter.ISO_ZONED_DATE_TIME
  */
 class SchedulingService(
         private val invoiceService: InvoiceService,
-        private val billingService: BillingService
+        private val processingChannel: SendChannel<Invoice>
 ) {
     private val logger = KotlinLogging.logger {}
 
     // Starts the service by launching a worker to schedule the bills to be paid with a specified periodicity.
-    fun start(periodicity: Periodicity) = runBlocking<Unit> {
+    fun start(periodicity: Periodicity) {
         logger.info { "Starting the Scheduling Service with a ${periodicity.toString()} periodicity" }
 
-        launch {
+        GlobalScope.launch {
             scheduleBills(periodicity)
         }
     }
@@ -31,15 +33,14 @@ class SchedulingService(
             val currTime = ZonedDateTime.now(ZoneId.of("UTC"))
             val timeToSleep = timeUntilNextPeriod(currTime, periodicity)
             val timeToWakeUp = currTime.plusNanos(timeToSleep * 1000000L)
-            logger.debug { "Going to sleep for $timeToSleep ms until ${timeToWakeUp.format(ISO_ZONED_DATE_TIME)}..." }
+            logger.info { "Going to sleep for $timeToSleep ms until ${timeToWakeUp.format(ISO_ZONED_DATE_TIME)}..." }
             delay(timeToSleep)
-            logger.debug { "Waking up" }
+            logger.info { "Waking up" }
 
             val invoices = invoiceService.fetchByStatus(InvoiceStatus.PENDING)
             logger.info { "Invoices to be scheduled: ${invoices.size}" }
             for (invoice in invoices) {
-                // TODO: put in a queue
-                billingService.payInvoice(invoice)
+                processingChannel.send(invoice)
             }
         }
     }
