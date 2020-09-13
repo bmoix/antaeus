@@ -7,8 +7,8 @@
 
 package io.pleo.antaeus.app
 
-import getCurrencyExchangeProvider
-import getPaymentProvider
+import io.pleo.antaeus.core.external.FixedCurrencyExchangeProvider
+import io.pleo.antaeus.core.external.UnstablePaymentProvider
 import io.pleo.antaeus.core.services.*
 import io.pleo.antaeus.data.AntaeusDal
 import io.pleo.antaeus.data.CustomerTable
@@ -55,13 +55,13 @@ fun main() {
     // Insert example data in the database.
     setupInitialData(dal = dal)
 
-    // Get third parties
-    val paymentProvider = getPaymentProvider()
-    val currencyExchangeProvider = getCurrencyExchangeProvider()
-
     // Create core services
     val invoiceService = InvoiceService(dal = dal)
     val customerService = CustomerService(dal = dal)
+
+    // Get third parties
+    val paymentProvider = UnstablePaymentProvider(customerService)
+    val currencyExchangeProvider = FixedCurrencyExchangeProvider()
 
     // This is _your_ billing service to be included where you see fit
     val exchangeService = ExchangeService(
