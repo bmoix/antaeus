@@ -4,6 +4,7 @@ import io.pleo.antaeus.models.Invoice
 import io.pleo.antaeus.models.InvoiceStatus
 import io.pleo.antaeus.models.Periodicity
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.SendChannel
 import mu.KotlinLogging
 import java.time.*
@@ -14,7 +15,8 @@ import java.time.format.DateTimeFormatter.ISO_ZONED_DATE_TIME
  */
 class SchedulingService(
         private val invoiceService: InvoiceService,
-        private val processingChannel: SendChannel<Invoice>
+        private val processingChannel: SendChannel<Invoice>,
+        private val retryChannel: Channel<Invoice>
 ) {
     private val logger = KotlinLogging.logger {}
 
@@ -24,6 +26,9 @@ class SchedulingService(
 
         GlobalScope.launch {
             scheduleBills(periodicity)
+        }
+        GlobalScope.launch {
+            scheduleRetries()
         }
     }
 
@@ -42,6 +47,13 @@ class SchedulingService(
             for (invoice in invoices) {
                 processingChannel.send(invoice)
             }
+        }
+    }
+
+    private suspend fun scheduleRetries() {
+        for (retry in retryChannel) {
+            logger.info { "Scheduling retry for invoice '${retry.id}'" }
+            processingChannel.send(retry)
         }
     }
 }

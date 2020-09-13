@@ -65,15 +65,18 @@ fun main() {
     val customerService = CustomerService(dal = dal)
 
     // This is _your_ billing service to be included where you see fit
-    val invoicesToPay = Channel<Invoice>()
+    val processingChannel = Channel<Invoice>()
+    val retryChannel = Channel<Invoice>()
     val billingService = BillingService(
             paymentProvider = paymentProvider,
             invoiceService = invoiceService,
-            processingChannel = invoicesToPay
+            processingChannel = processingChannel,
+            retryChannel = retryChannel,
     )
     val schedulingService = SchedulingService(
             invoiceService = invoiceService,
-            scheduledChannel = invoicesToPay,
+            processingChannel =processingChannel,
+            retryChannel = retryChannel,
     )
 
     // Start the billing and scheduling services in the background

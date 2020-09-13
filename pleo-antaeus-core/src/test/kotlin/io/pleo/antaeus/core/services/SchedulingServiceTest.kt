@@ -7,5 +7,7 @@ import kotlinx.coroutines.channels.Channel
 class SchedulingServiceTest {
     val invoiceService = mockk<InvoiceService> {}
     val processingChannel = mockk<Channel<Invoice>> {}
-    val schedulingService = SchedulingService(invoiceService, processingChannel)
+    val retryChannel = mockk<Channel<Invoice>> {}
+
+    val schedulingService = SchedulingService(invoiceService, processingChannel, retryChannel)
 }
