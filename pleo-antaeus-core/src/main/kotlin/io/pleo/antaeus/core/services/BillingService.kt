@@ -4,7 +4,7 @@ import io.pleo.antaeus.core.exceptions.CurrencyMismatchException
 import io.pleo.antaeus.core.exceptions.CustomerNotFoundException
 import io.pleo.antaeus.core.exceptions.NetworkException
 import io.pleo.antaeus.core.external.PaymentProvider
-import io.pleo.antaeus.models.Invoice
+import io.pleo.antaeus.models.BillingAttempt
 import io.pleo.antaeus.models.InvoiceStatus
 import io.pleo.antaeus.models.Money
 import kotlinx.coroutines.GlobalScope
@@ -16,8 +16,8 @@ import mu.KotlinLogging
 class BillingService(
         private val paymentProvider: PaymentProvider,
         private val invoiceService: InvoiceService,
-        private val processingChannel: ReceiveChannel<Invoice>,
-        private val retryChannel: SendChannel<Invoice>
+        private val processingChannel: ReceiveChannel<BillingAttempt>,
+        private val retryChannel: SendChannel<BillingAttempt>
 ) {
     private val logger = KotlinLogging.logger {}
 
@@ -32,19 +32,20 @@ class BillingService(
 
     // Processes all the invoices coming from the processingChannel
     private suspend fun processInvoices(): Unit {
-        for (invoice in processingChannel) {
-            payInvoice(invoice)
+        for (billingAttempt in processingChannel) {
+            payInvoice(billingAttempt)
         }
     }
 
-    fun payInvoice(invoice: Invoice): Unit {
-        logger.info { "Processing invoice '${invoice.id}' from customer '${invoice.customerId}'" }
+    fun payInvoice(billingAttempt: BillingAttempt): Unit {
+        logger.info { "Processing invoice '${billingAttempt.invoiceId}'" }
 
         // invoices should be paid only ONCE
-        if (markInvoiceAsProcessing(invoice.id) == 0) {
-            logger.warn { "Invoice '${invoice.id}' from customer '${invoice.customerId} is already processed. Skipping..." }
+        if (markInvoiceAsProcessing(billingAttempt.invoiceId) == 0) {
+            logger.warn { "Invoice '${billingAttempt.invoiceId}' is already processed. Skipping..." }
             return
         }
+        val invoice = invoiceService.fetch(billingAttempt.invoiceId)
 
         try {
             when (paymentProvider.charge(invoice)) {
@@ -55,7 +56,7 @@ class BillingService(
                 false -> {
                     logger.warn { "Invoice '${invoice.id}' from customer '${invoice.customerId}' FAILED. Retrying..."}
                     updateInvoice(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.INSUFFICIENT_FUNDS)
-                    retry(invoice)
+                    retry(BillingAttempt(billingAttempt.invoiceId, billingAttempt.numAttempts + 1))
                 }
             }
         }
@@ -71,7 +72,7 @@ class BillingService(
         catch (e: NetworkException) {
             logger.error(e) { "Failed to pay invoice '${invoice.id} from customer '${invoice.customerId}" }
             updateInvoice(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.NETWORK_ERROR)
-            retry(invoice)
+            retry(BillingAttempt(billingAttempt.invoiceId, billingAttempt.numAttempts + 1))
         }
     }
 
@@ -88,9 +89,9 @@ class BillingService(
         }
     }
 
-    private fun retry(invoice: Invoice): Unit {
+    private fun retry(billingAttempt: BillingAttempt): Unit {
         GlobalScope.launch {
-            retryChannel.send(invoice)
+            retryChannel.send(billingAttempt)
         }
     }
 }

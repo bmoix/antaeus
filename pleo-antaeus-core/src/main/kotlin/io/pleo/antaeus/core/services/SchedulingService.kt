@@ -1,13 +1,17 @@
 package io.pleo.antaeus.core.services
 
-import io.pleo.antaeus.models.Invoice
+import io.pleo.antaeus.models.BillingAttempt
 import io.pleo.antaeus.models.InvoiceStatus
 import io.pleo.antaeus.models.Periodicity
-import kotlinx.coroutines.*
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.SendChannel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import mu.KotlinLogging
-import java.time.*
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter.ISO_ZONED_DATE_TIME
 
 /*
@@ -15,8 +19,8 @@ import java.time.format.DateTimeFormatter.ISO_ZONED_DATE_TIME
  */
 class SchedulingService(
         private val invoiceService: InvoiceService,
-        private val processingChannel: SendChannel<Invoice>,
-        private val retryChannel: Channel<Invoice>
+        private val processingChannel: SendChannel<BillingAttempt>,
+        private val retryChannel: Channel<BillingAttempt>
 ) {
     private val logger = KotlinLogging.logger {}
 
@@ -28,6 +32,7 @@ class SchedulingService(
             scheduleBills(periodicity)
         }
         GlobalScope.launch {
+            delay(30000L)
             scheduleRetries()
         }
     }
@@ -45,15 +50,19 @@ class SchedulingService(
             val invoices = invoiceService.fetchByStatus(InvoiceStatus.PENDING)
             logger.info { "Invoices to be scheduled: ${invoices.size}" }
             for (invoice in invoices) {
-                processingChannel.send(invoice)
+                processingChannel.send(BillingAttempt(invoice.id, 0))
             }
         }
     }
 
-    private suspend fun scheduleRetries() {
+    private suspend fun scheduleRetries() = coroutineScope {
         for (retry in retryChannel) {
-            logger.info { "Scheduling retry for invoice '${retry.id}'" }
-            processingChannel.send(retry)
+            launch {
+                val timeToSleep = exponentialBackoff(100, 10, retry.numAttempts)
+                logger.info { "Scheduling retry for invoice '${retry.invoiceId}' in $timeToSleep ms" }
+                delay(timeToSleep)
+                processingChannel.send(retry)
+            }
         }
     }
 }

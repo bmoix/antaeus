@@ -3,6 +3,9 @@ package io.pleo.antaeus.core.services
 import io.pleo.antaeus.models.Periodicity
 import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit
+import kotlin.math.min
+import kotlin.math.pow
+import kotlin.random.Random
 
 /*
     Returns the time in milliseconds from the given time until the next period.
@@ -41,4 +44,12 @@ fun timeUntilNextPeriod(time: ZonedDateTime, periodicity: Periodicity): Long {
             .withSecond(0)
             .withNano(0)
     return time.until(nextTime, ChronoUnit.MILLIS)
+}
+
+/*
+    Returns a value (in milliseconds) following the exponential backoff algorithm.
+    See: https://en.wikipedia.org/wiki/Exponential_backoff
+ */
+fun exponentialBackoff(initial: Long, maxRetry: Int, currRetry: Int): Long {
+    return initial + Random.nextLong(0, 2.toDouble().pow(min(maxRetry, currRetry)).toLong()) * 1000L
 }

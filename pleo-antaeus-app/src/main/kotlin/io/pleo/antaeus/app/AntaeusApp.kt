@@ -15,7 +15,7 @@ import io.pleo.antaeus.core.services.SchedulingService
 import io.pleo.antaeus.data.AntaeusDal
 import io.pleo.antaeus.data.CustomerTable
 import io.pleo.antaeus.data.InvoiceTable
-import io.pleo.antaeus.models.Invoice
+import io.pleo.antaeus.models.BillingAttempt
 import io.pleo.antaeus.models.Periodicity
 import io.pleo.antaeus.rest.AntaeusRest
 import kotlinx.coroutines.channels.Channel
@@ -65,8 +65,8 @@ fun main() {
     val customerService = CustomerService(dal = dal)
 
     // This is _your_ billing service to be included where you see fit
-    val processingChannel = Channel<Invoice>()
-    val retryChannel = Channel<Invoice>()
+    val processingChannel = Channel<BillingAttempt>()
+    val retryChannel = Channel<BillingAttempt>()
     val billingService = BillingService(
             paymentProvider = paymentProvider,
             invoiceService = invoiceService,

@@ -5,10 +5,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.pleo.antaeus.core.exceptions.CustomerNotFoundException
 import io.pleo.antaeus.core.external.PaymentProvider
-import io.pleo.antaeus.models.Currency
-import io.pleo.antaeus.models.Invoice
-import io.pleo.antaeus.models.InvoiceStatus
-import io.pleo.antaeus.models.Money
+import io.pleo.antaeus.models.*
 import kotlinx.coroutines.channels.Channel
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
@@ -21,28 +18,31 @@ class BillingServiceTest {
             1,
             42,
             Money(BigDecimal.valueOf(10.0), Currency.EUR),
-            InvoiceStatus.PENDING
+            InvoiceStatus.PROCESSING
     )
+    private val billingAttempt = BillingAttempt(invoice.id, 0)
 
     private val paymentProvider = mockk<PaymentProvider> {
         every { charge(any()) } returns true
     }
     private val invoiceService = mockk<InvoiceService> {
         every { updateToProcessing(invoice.id) } returns 1
+        every { fetch(invoice.id) } returns invoice
         every { update(invoice.id, invoice.customerId, invoice.amount, any()) } returns 1
     }
-    private val processingChannel = mockk<Channel<Invoice>> {}
-    private val retryChannel = mockk<Channel<Invoice>> {}
+    private val processingChannel = mockk<Channel<BillingAttempt>> {}
+    private val retryChannel = mockk<Channel<BillingAttempt>> {}
 
     private val billingService = BillingService(paymentProvider, invoiceService, processingChannel, retryChannel)
 
     @Test
     fun `payInvoice succeeds`() {
-        billingService.payInvoice(invoice)
+        billingService.payInvoice(billingAttempt)
 
         verify(exactly = 1) {
-            paymentProvider.charge(invoice)
             invoiceService.updateToProcessing(invoice.id)
+            invoiceService.fetch(invoice.id)
+            paymentProvider.charge(invoice)
             invoiceService.update(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.PAID)
         }
     }
@@ -53,9 +53,10 @@ class BillingServiceTest {
             every { updateToProcessing(invoice.id) } returns 0
         }
         val service = BillingService(paymentProvider, invoiceServicePaid, processingChannel, retryChannel)
-        service.payInvoice(invoice)
+        service.payInvoice(billingAttempt)
 
         verify(exactly = 0) {
+            invoiceService.fetch(invoice.id)
             paymentProvider.charge(invoice)
         }
     }
@@ -67,10 +68,11 @@ class BillingServiceTest {
         }
         val service = BillingService(paymentProviderFail, invoiceService, processingChannel, retryChannel)
 
-        service.payInvoice(invoice)
+        service.payInvoice(billingAttempt)
 
         verify(exactly = 1) {
             invoiceService.updateToProcessing(invoice.id)
+            invoiceService.fetch(invoice.id)
             paymentProviderFail.charge(invoice)
             invoiceService.update(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.ERROR)
         }
@@ -78,15 +80,23 @@ class BillingServiceTest {
 
     @Test
     fun `payInvoice fails updating DB after charge`() {
-        val invoiceService = mockk<InvoiceService> {
+        val invoiceServiceFail = mockk<InvoiceService> {
             every { updateToProcessing(invoice.id) } returns 1
+            every { fetch(invoice.id) } returns invoice
             every { update(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.PAID) } returns 0
         }
-        val service = BillingService(paymentProvider, invoiceService, processingChannel, retryChannel)
+        val service = BillingService(paymentProvider, invoiceServiceFail, processingChannel, retryChannel)
 
         val exception = assertThrows<Exception> {
-            service.payInvoice(invoice)
+            service.payInvoice(billingAttempt)
         }
         assertEquals("failed DB update", exception.message)
+
+        verify(exactly = 1) {
+            invoiceServiceFail.updateToProcessing(invoice.id)
+            invoiceServiceFail.fetch(invoice.id)
+            paymentProvider.charge(invoice)
+            invoiceServiceFail.update(invoice.id, invoice.customerId, invoice.amount, InvoiceStatus.PAID)
+        }
     }
 }
